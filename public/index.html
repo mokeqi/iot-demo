@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT 温湿度监控</title>
+  <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      padding: 24px;
+    }
+    h1 { font-size: 22px; margin-bottom: 20px; }
+    .cards {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+      min-width: 140px;
+    }
+    .card .label { font-size: 13px; color: #888; margin-bottom: 6px; }
+    .card .value { font-size: 26px; font-weight: 600; }
+    .card .unit { font-size: 14px; color: #888; font-weight: normal; }
+    .chart-box {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    #waiting {
+      margin: 12px 0;
+      padding: 12px 16px;
+      background: #fffbe6;
+      border: 1px solid #ffe58f;
+      border-radius: 6px;
+      color: #ad6800;
+    }
+  </style>
+</head>
+<body>
+  <h1>IoT 温湿度监控</h1>
+
+  <div id="waiting">等待数据…（请确认 MQTT broker 已启动，数据每 2 秒更新一次）</div>
+
+  <div class="cards">
+    <div class="card"><div class="label">设备 ID</div><div class="value" id="deviceId">--</div></div>
+    <div class="card"><div class="label">温度</div><div class="value"><span id="temperature">--</span> <span class="unit">°C</span></div></div>
+    <div class="card"><div class="label">湿度</div><div class="value"><span id="humidity">--</span> <span class="unit">%</span></div></div>
+    <div class="card"><div class="label">更新时间</div><div class="value" id="time" style="font-size:20px">--</div></div>
+  </div>
+
+  <div class="chart-box">
+    <canvas id="chart" height="90"></canvas>
+  </div>
+
+  <script>
+    const MAX_POINTS = 150;
+    const labels = [];
+    const temps = [];
+    const hums = [];
+
+    const chart = new Chart(document.getElementById('chart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '温度 (°C)',
+            data: temps,
+            borderColor: '#e8684a',
+            backgroundColor: 'rgba(232,104,74,.1)',
+            yAxisID: 'y_temp',
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: '湿度 (%)',
+            data: hums,
+            borderColor: '#4a90e8',
+            backgroundColor: 'rgba(74,144,232,.1)',
+            yAxisID: 'y_hum',
+            tension: 0.3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          y_temp: { position: 'left', title: { display: true, text: '温度 (°C)' } },
+          y_hum: { position: 'right', title: { display: true, text: '湿度 (%)' }, grid: { drawOnChartArea: false } },
+        },
+      },
+    });
+
+    function fmtTime(ts) {
+      const d = new Date(ts);
+      const p = (n) => String(n).padStart(2, '0');
+      return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    }
+
+    function addPoint(data) {
+      document.getElementById('deviceId').textContent = data.deviceId;
+      document.getElementById('temperature').textContent = data.temperature;
+      document.getElementById('humidity').textContent = data.humidity;
+      document.getElementById('time').textContent = fmtTime(data.ts);
+      document.getElementById('waiting').style.display = 'none';
+
+      labels.push(fmtTime(data.ts));
+      temps.push(parseFloat(data.temperature));
+      hums.push(parseFloat(data.humidity));
+      if (labels.length > MAX_POINTS) {
+        labels.shift(); temps.shift(); hums.shift();
+      }
+      chart.update();
+    }
+
+    const es = new EventSource('/api/events');
+    es.addEventListener('init', (e) => {
+      const history = JSON.parse(e.data);
+      history.forEach(addPoint);
+    });
+    es.onmessage = (e) => addPoint(JSON.parse(e.data));
+  </script>
+</body>
+</html>
