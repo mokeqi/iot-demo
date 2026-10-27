@@ -2,10 +2,25 @@ require('dotenv').config();
 const mqtt = require('mqtt');
 const express = require('express');
 const path = require('path');
+const { DatabaseSync } = require('node:sqlite');
 
 const url = process.env.MQTT_URL || 'mqtt://localhost:1883';
 const topic = process.env.TOPIC || 'iot/demo/temperature';
 const port = process.env.PORT || 3000;
+
+// ---------- SQLite 历史数据存储 ----------
+const db = new DatabaseSync(path.join(__dirname, 'data.db'));
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sensor_data (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId    TEXT,
+    temperature REAL,
+    humidity    REAL,
+    timestamp   INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_sensor_data_ts ON sensor_data(timestamp);
+`);
+console.log('[DB] SQLite ready, table: sensor_data');
 
 // ---------- 网页服务器（展示实际发布的数据） ----------
 const app = express();
@@ -27,6 +42,14 @@ app.get('/api/events', (req, res) => {
   res.write(`event: init\ndata: ${JSON.stringify(history)}\n\n`);
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
+});
+
+// 历史数据查询：最近 50 条，按时间正序返回
+app.get('/api/history', (req, res) => {
+  const rows = db.prepare(
+    'SELECT * FROM (SELECT * FROM sensor_data ORDER BY id DESC LIMIT 50) ORDER BY id ASC'
+  ).all();
+  res.json(rows);
 });
 
 app.listen(port, () => {
@@ -66,6 +89,10 @@ client.on('connect', () => {
         history.push(data);
         if (history.length > MAX_POINTS) history.shift();
         broadcast(data);
+        // 持久化到 SQLite
+        db.prepare(
+          'INSERT INTO sensor_data (deviceId, temperature, humidity, timestamp) VALUES (?, ?, ?, ?)'
+        ).run(data.deviceId, parseFloat(data.temperature), parseFloat(data.humidity), data.ts);
       }
     });
   }, 2000);

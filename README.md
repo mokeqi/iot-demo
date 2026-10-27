@@ -31,8 +31,15 @@ npm start
 2. 另开一个终端运行 `npm run sub`，订阅端打印的数值应与网页一致；
 3. 刷新网页应立即恢复历史曲线（服务端会重放最近 150 个数据点）。
 
-### 配置（.env）
+### 5. 历史数据存储与查询
 
+publisher 在每次成功发布数据后，会自动写入本地 SQLite 数据库 `data.db` 的 `sensor_data` 表（字段：id, deviceId, temperature, humidity, timestamp）。
+
+- 查询接口：`GET http://localhost:3000/api/history`，返回最近 50 条记录（JSON，按时间正序）。
+- 历史可视化页面：http://localhost:3000/visualization_history.html ，使用 ECharts 绘制温湿度历史折线图，每 5 秒自动刷新。
+- 数据库文件 `data.db` 已加入 `.gitignore`，不会进入版本库。
+
+### 配置（.env）
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
 | MQTT_URL | broker 地址 | mqtt://localhost:1883 |

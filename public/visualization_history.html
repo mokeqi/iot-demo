@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT 温湿度历史数据</title>
+  <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      padding: 24px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 22px; }
+    .toolbar { display: flex; align-items: center; gap: 12px; }
+    .status { font-size: 13px; color: #888; }
+    button {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 4px;
+      background: #1677ff;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { background: #4096ff; }
+    .chart-box {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+      height: 460px;
+    }
+    .placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #999;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>IoT 温湿度历史数据（最近 50 条）</h1>
+    <div class="toolbar">
+      <span class="status" id="status">加载中…</span>
+      <button id="refresh">刷新</button>
+    </div>
+  </div>
+
+  <div class="chart-box">
+    <div class="placeholder" id="placeholder">暂无历史数据，请稍候…</div>
+    <div id="chart" style="width:100%;height:100%;display:none"></div>
+  </div>
+
+  <script>
+    const chart = echarts.init(document.getElementById('chart'));
+    const placeholder = document.getElementById('placeholder');
+    const statusEl = document.getElementById('status');
+
+    function fmtTime(ts) {
+      const d = new Date(ts);
+      const p = (n) => String(n).padStart(2, '0');
+      return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    }
+
+    async function loadHistory() {
+      statusEl.textContent = '加载中…';
+      try {
+        const res = await fetch('/api/history');
+        const rows = await res.json();
+        if (!Array.isArray(rows) || rows.length === 0) {
+          placeholder.style.display = 'flex';
+          document.getElementById('chart').style.display = 'none';
+          statusEl.textContent = '暂无历史数据';
+          return;
+        }
+        placeholder.style.display = 'none';
+        document.getElementById('chart').style.display = 'block';
+
+        chart.setOption({
+          tooltip: { trigger: 'axis' },
+          legend: { data: ['温度 (°C)', '湿度 (%)'] },
+          xAxis: {
+            type: 'category',
+            data: rows.map(r => fmtTime(r.timestamp)),
+            axisLabel: { rotate: 30 }
+          },
+          yAxis: [
+            { type: 'value', name: '温度 (°C)', position: 'left' },
+            { type: 'value', name: '湿度 (%)', position: 'right' }
+          ],
+          series: [
+            {
+              name: '温度 (°C)',
+              type: 'line',
+              smooth: true,
+              data: rows.map(r => r.temperature),
+              yAxisIndex: 0,
+              lineStyle: { color: '#e8684a' },
+              itemStyle: { color: '#e8684a' }
+            },
+            {
+              name: '湿度 (%)',
+              type: 'line',
+              smooth: true,
+              data: rows.map(r => r.humidity),
+              yAxisIndex: 1,
+              lineStyle: { color: '#4a90e8' },
+              itemStyle: { color: '#4a90e8' }
+            }
+          ]
+        });
+        chart.resize();
+        statusEl.textContent = `已加载 ${rows.length} 条（最后更新 ${fmtTime(rows[rows.length - 1].timestamp)}）`;
+      } catch (e) {
+        statusEl.textContent = '加载失败：' + e.message;
+      }
+    }
+
+    document.getElementById('refresh').addEventListener('click', loadHistory);
+    loadHistory();
+    setInterval(loadHistory, 5000); // 每 5 秒自动刷新
+  </script>
+</body>
+</html>
